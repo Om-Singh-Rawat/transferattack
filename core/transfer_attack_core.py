@@ -2,7 +2,7 @@ import os
 import uuid
 from pathlib import Path
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 
 import numpy as np
@@ -25,6 +25,7 @@ ALL_ATTACKS = [
     'TI_FGSM',
     'SI_NI_FGSM',
     'MI_ADMIX_DI_TI',
+    'ATT_CNN',
 ]
 
 ATTACK_COLS = {
@@ -33,6 +34,7 @@ ATTACK_COLS = {
     'TI_FGSM': 'ti_fgsm_path',
     'SI_NI_FGSM': 'si_ni_fgsm_path',
     'MI_ADMIX_DI_TI': 'mi_admix_di_ti_path',
+    'ATT_CNN': 'att_cnn_path',
 }
 
 EPSILON = 0.062
@@ -237,6 +239,56 @@ def mi_admix_di_ti(model, x, tgt_emb, attack_type, pool_imgs, input_size):
     return adv
 
 
+def att_cnn(model, x, tgt_emb, attack_type):
+    with tf.GradientTape() as tape:
+        tape.watch(x)
+        emb = compute_embedding(model, x)
+        cos = tf.reduce_sum(emb * tf.nn.l2_normalize(tgt_emb, axis=1), axis=1)
+        loss = attack_loss(cos, attack_type)
+    
+    grad = tape.gradient(loss, x)
+    saliency = tf.reduce_sum(tf.abs(grad), axis=-1, keepdims=True)
+    
+    kernel = gaussian_kernel(k=7, sigma=1.5, ch=1)
+    gf = tf.nn.depthwise_conv2d(saliency, kernel, [1, 1, 1, 1], 'SAME')
+    
+    gf_min = tf.reduce_min(gf, axis=[1, 2, 3], keepdims=True)
+    gf_max = tf.reduce_max(gf, axis=[1, 2, 3], keepdims=True)
+    gf_t = (gf - gf_min) / (gf_max - gf_min + 1e-8)
+    
+    adv = tf.identity(x)
+    g = tf.zeros_like(x)
+    alpha = EPSILON / NUM_ITER
+    tgt_emb = tf.nn.l2_normalize(tgt_emb, axis=1)
+    gf_start = 0.99
+    
+    for i in range(NUM_ITER):
+        gf_offset = (gf_start - gf_t) / float(NUM_ITER)
+        threshold = gf_start - gf_offset * float(i + 1)
+        
+        random_mask = tf.random.uniform(tf.shape(gf_t), minval=0.0, maxval=1.0)
+        mask = tf.where(random_mask > threshold, 0.0, 1.0)
+        
+        perturbation = adv - x
+        masked_perturbation = perturbation * mask
+        masked_adv = x + masked_perturbation
+        
+        with tf.GradientTape() as tape:
+            tape.watch(masked_adv)
+            emb = compute_embedding(model, masked_adv)
+            cos = tf.reduce_sum(emb * tgt_emb, axis=1)
+            loss = attack_loss(cos, attack_type)
+        
+        grad = tape.gradient(loss, masked_adv)
+        grad = grad / (tf.reduce_mean(tf.abs(grad)) + 1e-8)
+        g = DECAY * g + grad
+        adv = adv + alpha * tf.sign(g)
+        adv = tf.clip_by_value(adv, x - EPSILON, x + EPSILON)
+        adv = tf.clip_by_value(adv, -1.0, 1.0)
+        
+    return adv
+
+
 def build_attacker(model_name: str):
     return DeepFace.build_model(model_name).model
 
@@ -254,4 +306,6 @@ def run_attack(attack_name: str, model, src, tgt, attack_type: str, input_size):
     if attack_name == 'MI_ADMIX_DI_TI':
         pool_imgs = tf.concat([src, tgt, src], axis=0)
         return mi_admix_di_ti(model, src, tgt_emb, attack_type, pool_imgs, input_size)
+    if attack_name == 'ATT_CNN':
+        return att_cnn(model, src, tgt_emb, attack_type)
     raise ValueError(f'Unsupported attack: {attack_name}')

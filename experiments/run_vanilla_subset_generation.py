@@ -29,7 +29,7 @@ def main():
     ap.add_argument('--attacks', default=','.join(ALL_ATTACKS))
     args = ap.parse_args()
 
-    configure_cpu_runtime(1)
+    # configure_cpu_runtime(1)
     attacks = [a.strip() for a in args.attacks.split(',') if a.strip()]
     input_size = ATTACKER_MODELS[args.attacker_model]
     model = build_attacker(args.attacker_model)
