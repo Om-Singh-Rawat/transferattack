@@ -1,80 +1,171 @@
----
 # Slide 1: Title Slide
-**Title:** Transfer Attacks in Face Recognition
-**Subtitle:** Backward Propagation Attack (BPA-CNN)
+**Title:** BPA-CNN: Backward Propagation Attack on Face Verification
 **Author:** Om Singh Rawat
-**Date:** June 12, 2026
+**Date:** June 14, 2026
 
 ---
-# Slide 2: Attacks Considered
-* PGD (baseline)
-* MI-FGSM (momentum-based)
-* TI-FGSM (translation-invariant)
-* SI-NI-FGSM (scale-invariant Nesterov)
-* MI-ADMIX-DI-TI (admixed input diversity)
-* **BPA-CNN (backward propagation adaptation)**
+# Slide 2: Selecting BPA-CNN
+**Why BPA-CNN?**
+* Recent NeurIPS 2023 publication
+* Highly effective transferability across CNN-based models
+* Present in recent literature but not implemented in the intern baseline
+
+**Code**
+* Implemented natively in the TransferAttack repository
 
 ---
-# Slide 3: BPA-CNN (Backward Propagation Attack)
-**Definition & Nature**
-* White-box transfer-based adversarial attack
-* Gradient-based optimization method
-* Adapted for black-box/pre-trained CNN models
-* Based on NeurIPS 2023 paper implementation
+# Slide 3: Understanding BPA-CNN
+**BPA = Backward Propagation Attack**
+* Targets the sharp operations (ReLU, MaxPool) that cause gradient masking in CNNs.
 
-**Basic Idea**
-* Replaces sharp backward pass operations (ReLU, MaxPool) with smooth alternatives
-* Smooths gradients at the input level to prevent overfitting to the surrogate model
-* Counteracts ReLU binary gradient masking and MaxPool winner-take-all gradient concentration
+**SiLU-Derivative Scaling**
+* Replaces sharp ReLU gradients with smooth SiLU-inspired gradients.
+* Counteracts binary gradient masking.
 
----
-# Slide 4: BPA-CNN - Goal
-**Operates in embedding space**
-* **Impersonation:** increase cosine similarity
-* **Dodging:** decrease cosine similarity
-* Optimizes embedding distance directly
+**Gaussian Spatial Smoothing**
+* Replaces MaxPool's winner-take-all gradient concentration with a spatial Gaussian blur.
+* Spreads the gradient information across adjacent pixels.
 
-**Working of BPA-CNN attack**
-1. Initialize adversarial image as original input
-2. Define attack objective (based on attack type)
-3. For T iterations:
-   * Compute gradient of objective w.r.t input
-   * Scale gradient and apply SiLU-derivative smoothing
-   * Apply Gaussian spatial smoothing to the gradient
-   * Normalize gradient and update accumulated gradient (momentum)
-   * Update image using sign of accumulated gradient
-   * Project image into ε bounded region
-   * Clip to valid pixel range
-4. Return final adversarial image
+**Momentum Update**
+* Like MI-FGSM, maintains accumulated gradient
+* `g = decay*g + grad`
+* `adv = adv + alpha*sign(g)`
+
+**Attack Objectives (unchanged)**
+* Impersonation: maximize cosine similarity
+* Dodging: minimize cosine similarity
 
 ---
-# Slide 5: Attack Implementation
-**BPA-CNN in Our Implementation**
-1. Initializes momentum variable `g`
-2. Uses SiLU-derivative gradient scaling (`silu_deriv`) with Temperature = 3.0
-3. Applies spatial Gaussian smoothing with Kernel = 5, Sigma = 1.0
-4. Normalizes and updates accumulated gradient: `g = DECAY * g + grad`
-5. Standard ε-projection via clipping (ε = 0.062)
-6. Fixed number of iterations (`NUM_ITER = 5`, `DECAY = 1.0`)
+# Slide 4: Adapting BPA to Face Verification
+**Problem**
+* Official BPA relies on modifying internal CNN layers (white-box access).
+* Baseline uses pre-trained, encapsulated DeepFace models (ArcFace, Facenet512, GhostFaceNet, VGG-Face).
+* Dynamically unpacking and modifying internal layers of these frozen models was impractical. Direct copy-paste was impossible.
+
+**Adapted Core Ideas**
+* We brought the BPA principles to the **input level**:
+  * Gradient normalization
+  * SiLU-inspired scaling applied directly to the raw image gradients.
+  * Spatial Gaussian convolution applied to the gradients.
+  * Momentum accumulation
+  * Epsilon-ball projection
 
 ---
-# Slide 6: Performance Results on Subset
-**Overall Breach Rate (Transferability)**
-* **BPA_CNN: 34.42% (Highest)**
-* SI_NI_FGSM: 30.98%
-* MI_FGSM: 25.82%
-* MI_ADMIX_DI_TI: 24.18%
-* TI_FGSM: 20.92%
-* PGD: 17.39%
+# Slide 5: Code Integration
+**Step 1 — Register BPA_CNN**
+```python
+ALL_ATTACKS = [
+    'PGD', 'MI_FGSM',
+    'TI_FGSM', 'SI_NI_FGSM',
+    'MI_ADMIX_DI_TI',
+    'BPA_CNN' # <-- added
+]
+```
+
+**BPA-CNN function Pseudo Code**
+```python
+1. Initialize adversarial image
+2. Compute embedding similarity & loss
+3. Compute gradient
+4. Apply SiLU-derivative smoothing
+5. Apply Gaussian spatial smoothing
+6. Normalize gradient & Update momentum
+7. Project into ε-ball & Clip image
+8. Repeat for NUM_ITER
+```
+
+**Step 3 — Dispatcher**
+```python
+if attack_name == "BPA_CNN":
+    return bpa_cnn(...)
+```
+
+---
+# Slide 6: Key Challenges Encountered
+**Missing Evaluation Pipeline**
+* No script existed to compute similarity scores.
+* Only the summarization script was present.
+* Evaluation pipeline had been intentionally removed.
+* Had to reverse-engineer from baseline CSV structure.
+
+**Dataset Path Mismatch**
+* Professor’s CSV used `/content/face_module/...`
+* My local WSL used `dataset_extractedfaces/...`
+* Solution: Custom path conversion function (`resolve_image_path`).
+
+**Model Input Size Mismatch**
+* ArcFace, GhostFaceNet: 112 × 112
+* Facenet512: 160 × 160
+* VGG-Face: 224 × 224
+* Fixed via dynamic per-model resizing.
+
+---
+# Slide 7: Reconstructed Evaluation Pipeline
+**Pipeline Flow**
+1. Load adversarial image
+2. Load victim model
+3. Compute embedding
+4. Load target image
+5. Compute target embedding
+6. Compute cosine similarity
+7. Store CSV row
+
+**Output Files**
+* `subset_raw_similarities_long.csv`
+* Processed by `build_subset_baselines.py`
+* Aggregated into `final_check/` folders
+
+**CSV Schema**
+```python
+ row_id,
+ attacker_model,
+ img1,
+ img2,
+ dataset,
+ attack_type,
+ victim_model,
+ attack_method,
+ variant,
+ similarity
+```
+
+---
+# Slide 8: Final Results
+**Attack Breach Rate (Overall)**
+* SI_NI_FGSM: 31.46%
+* **BPA_CNN: 29.58%**
+* MI_FGSM: 26.04%
+* MI_ADMIX_DI_TI: 23.96%
+* TI_FGSM: 20.00%
+* PGD: 16.46%
 
 **Performance by Goal**
-* **Dodging Success Rate:** BPA_CNN achieves **48.08%** (vs SI_NI_FGSM: 39.90%)
-* **Impersonation Success Rate:** BPA_CNN achieves **16.67%** (vs SI_NI_FGSM: 19.38%)
+* **Dodging Success Rate:** BPA_CNN achieves **39.17%** (Best overall, vs SI_NI_FGSM: 38.75%)
+* **Impersonation Success Rate:** BPA_CNN achieves **20.00%** (2nd best, vs SI_NI_FGSM: 24.17%)
 
-**Why BPA-CNN Performs Well**
-* Smoother gradients reduce model overfitting
-* Enhances cross-model transferability specifically on CNN architectures
+**Analysis**
+* BPA-CNN achieved the **highest Dodging success rate** across all methods.
+* Overall, it firmly established itself as the 2nd most effective attack, significantly outperforming PGD, TI-FGSM, and MI-FGSM.
+* **Why so high?** 
+  * BPA was explicitly designed to bypass gradient masking and concentration inherent in CNNs.
+  * Since all baseline models (VGG, ResNet-based ArcFace) are CNNs, the input-level smoothing heavily disrupted their shared structural vulnerabilities, leading to massive transferability.
 
 ---
-# Slide 7: Thank You
+# Slide 9: What I Learned
+**Technical**
+* Transfer attack mechanics & Face verification pipelines
+* Reading and adapting research code into input-level equivalents
+* Reverse engineering incomplete repositories
+* Building missing evaluation infrastructure
+* GPU optimization (Rewriting core logic for massive `batch_size=32` parallelism)
+
+**Process**
+* Integrating new research into existing codebases
+* Quantitative attack comparison
+* Debugging silent failures (missing rows, path mismatches)
+* Extending baselines without redesigning the system
+
+---
+# Slide 10: Thank You
 **Thank You**
+* Om Singh Rawat
