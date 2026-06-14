@@ -9,7 +9,7 @@ import pandas as pd
 
 ATTACKERS = ['Facenet512', 'ArcFace', 'GhostFaceNet', 'VGG-Face']
 VICTIMS = ['Facenet512', 'ArcFace', 'GhostFaceNet', 'VGG-Face', 'IR152']
-ATTACKS = ['PGD', 'MI_FGSM', 'TI_FGSM', 'SI_NI_FGSM', 'MI_ADMIX_DI_TI']
+ATTACKS = ['PGD', 'MI_FGSM', 'TI_FGSM', 'SI_NI_FGSM', 'MI_ADMIX_DI_TI', 'DECOWA']
 
 
 def equivalent_models(a, b):
