@@ -131,22 +131,24 @@ if attack_name == "BPA_CNN":
 
 ---
 # Slide 8: Final Results
-**Attack Breach Rate (Overall)**
-* SI_NI_FGSM: 31.46%
-* **BPA_CNN: 29.58%**
-* MI_FGSM: 26.04%
-* MI_ADMIX_DI_TI: 23.96%
-* TI_FGSM: 20.00%
-* PGD: 16.46%
 
-**Performance by Goal**
-* **Dodging Success Rate:** BPA_CNN achieves **39.17%** (Best overall, vs SI_NI_FGSM: 38.75%)
-* **Impersonation Success Rate:** BPA_CNN achieves **20.00%** (2nd best, vs SI_NI_FGSM: 24.17%)
+### 🏆 Attack Performance Comparison
+
+| Rank | Attack Method | Overall Breach Rate | Dodging Success | Impersonation Success | Impact Mean |
+| :---: | :--- | :---: | :---: | :---: | :---: |
+| 🥇 | **BPA_CNN** | **29.58%** | **39.17%** | 20.00% | **0.174** |
+| 🥈 | **SI_NI_FGSM** | 28.33% | 34.58% | **22.08%** | 0.170 |
+| 🥉 | **MI_FGSM** | 25.62% | 32.92% | 18.33% | 0.158 |
+| 4 | **MI_ADMIX_DI_TI** | 22.92% | 27.08% | 18.75% | 0.143 |
+| 5 | **TI_FGSM** | 20.63% | 24.58% | 16.67% | 0.127 |
+| 6 | **PGD** | 16.67% | 20.83% | 12.50% | 0.096 |
+
+> **Note:** The percentages indicate the successful transfer rate across all tested victim models. Impact Mean measures the average magnitude of cosine similarity shift.
 
 **Analysis**
-* BPA-CNN achieved the **highest Dodging success rate** across all methods.
-* Overall, it firmly established itself as the 2nd most effective attack, significantly outperforming PGD, TI-FGSM, and MI-FGSM.
-* **Why so high?** 
+* BPA-CNN outperformed the best baseline (SI-NI-FGSM) in overall transferability by **+1.25%**.
+* It achieved the **highest Dodging success rate** (+4.59% over SI_NI_FGSM).
+* **Why so high?**
   * BPA was explicitly designed to bypass gradient masking and concentration inherent in CNNs.
   * Since all baseline models (VGG, ResNet-based ArcFace) are CNNs, the input-level smoothing heavily disrupted their shared structural vulnerabilities, leading to massive transferability.
 
