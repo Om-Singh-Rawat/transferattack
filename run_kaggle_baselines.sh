@@ -19,11 +19,6 @@
 # Ensure we are inside the transferattack folder
 cd /kaggle/working/transferattack
 
-# Patch core files to ENABLE GPUs automatically for batch_size=1 runs
-echo "Patching original codebase to unlock GPU support..."
-sed -i "s/os.environ\['CUDA_VISIBLE_DEVICES'\] = '-1'/# os.environ\['CUDA_VISIBLE_DEVICES'\] = '-1'/g" core/transfer_attack_core.py
-sed -i "s/configure_cpu_runtime(1)/# configure_cpu_runtime(1)/g" experiments/run_vanilla_subset_generation.py
-
 
 # Setup Environment Variables for deterministic GPU execution
 # (Disabled because TF_DETE RMINISTIC_OPS requires hardcoded random seeds in all tf.random ops)
