@@ -38,7 +38,9 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    inp = pd.read_csv(args.input_csv).reset_index().rename(columns={'index': 'row_id'})
+    inp = pd.read_csv(args.input_csv)
+    if 'row_id' not in inp.columns:
+        inp = inp.reset_index().rename(columns={'index': 'row_id'})
     subset_parts = []
     for attack_type in ['impersonation_attack', 'dodging_attack']:
         for dataset in ['lfw_pairs', 'celeba_pairs', 'vggface2_pairs']:
