@@ -1,79 +1,151 @@
-# 🚀 Final Project Completion Summary: Evaluating DECOWA
+# DECOWA — Presentation Slides README
 
-This document serves as the comprehensive final summary of the **DECOWA** (Dual-stage Evolution with COrrelation-guided WArping) attack evaluation. It outlines the complete workflow, including the generation of adversarial images across two separate Kaggle sessions, the merging of split evaluation results, and the computation of the final breach rate leaderboards.
-
-The primary goal was to benchmark **DECOWA** — a state-of-the-art transferable adversarial attack — against the five established vanilla baselines (SI\_NI\_FGSM, MI\_FGSM, MI\_ADMIX\_DI\_TI, TI\_FGSM, and PGD) and our custom BPA\_CNN implementation.
+**Om Singh Rawat** · Transfer Attacks in Face Recognition · June 16, 2026
 
 ---
 
-## 1. Adversarial Image Generation
+## Slide 1 — Attacks Considered
 
-The adversarial images for DECOWA were generated on **Google Colab / Kaggle** using GPU acceleration. Due to session time limits, the generation was split into two batches:
-
-- **Batch 1 (Attackers: ArcFace & GhostFaceNet):** Generated adversarial images using ArcFace and GhostFaceNet as surrogate models.
-- **Batch 2 (Attackers: Facenet512 & VGG-Face):** Generated adversarial images using Facenet512 and VGG-Face as surrogate models.
-
-All generated images and their path CSVs are stored in the `outputs_decowa_colab/` folder, organized by attacker model:
-
-```
-outputs_decowa_colab/
-├── ArcFace/DECOWA/          # 30 adversarial images
-├── Facenet512/DECOWA/       # 30 adversarial images
-├── GhostFaceNet/DECOWA/     # 30 adversarial images
-├── VGG-Face/DECOWA/         # 30 adversarial images
-├── ArcFace_subset_adv_paths.csv
-├── Facenet512_subset_adv_paths.csv
-├── GhostFaceNet_subset_adv_paths.csv
-└── VGG-Face_subset_adv_paths.csv
-```
+- PGD (baseline)
+- MI-FGSM (momentum-based)
+- TI-FGSM (translation-invariant)
+- SI-NI-FGSM (scale-invariant Nesterov)
+- MI-ADMIX-DI-TI (admixed input diversity)
+- BPA-CNN (backward propagation adaptation)
+- **DECOWA (deformation-constrained warping attack) ← NEW**
 
 ---
 
-## 2. Evaluation Pipeline
+## Slide 2 — Selecting DECOWA
 
-### Split Evaluation Strategy
+### Why DECOWA?
 
-Since adversarial images were generated in two batches, evaluation was also performed in two separate runs:
-
-1. **Run 1:** Evaluated adversarial images from ArcFace & GhostFaceNet attackers against all 5 victim models → `subset_raw_similarities_long.csv`
-2. **Run 2:** Evaluated adversarial images from Facenet512 & VGG-Face attackers against all 5 victim models → `subset_raw_similarities_long_v.csv`
-
-### Merging the Results
-
-The two raw CSV files were merged by appending the data rows from the second file into the first:
-
-```bash
-# Skip the header of the second CSV and append to the first
-tail -n +2 results_decowa_colab/subset_raw_similarities_long_v.csv >> results_decowa_colab/subset_raw_similarities_long.csv
-```
-
-The merged file was then fed into `scripts/build_subset_baselines.py` to compute the final breach rates.
-
-### Important Note: Why Each Run Evaluated All 5 Victims
-
-Even though only 2 attacker models were used per run, the evaluation script tested those adversarial images against **all 5 victim models** (Facenet512, ArcFace, GhostFaceNet, VGG-Face, IR152). This is by design — the entire purpose of a **transferability** study is to measure whether adversarial images crafted on one model can fool a completely different model.
+- ❑ Recent publication from adversarial robustness literature (AAAI 2024)
+- ❑ Achieves state-of-the-art transferability via geometric image warping
+- ❑ Fundamentally different approach from gradient-only methods — applies spatial deformation
+- ❑ Not implemented in the intern baseline
+- ❑ Code reference — [GitHub Repo](https://github.com/lzj-isee/DECOWA)
 
 ---
 
-## 3. Final Summary Generation
+## Slide 3 — DECOWA (Deformation-Constrained Warping Attack)
 
-The final summaries were generated using:
+### Definition & Nature
 
-```bash
-python3 scripts/build_subset_baselines.py \
-    --raw-long-csv results_decowa_colab/subset_raw_similarities_long.csv \
-    --input-csv docs/subset_input_pairs.csv \
-    --thresholds-json core/verification_thresholds.json \
-    --output-dir final_check_decowa
-```
+- ❑ White-box transfer-based adversarial attack
+- ❑ Gradient-based optimization method enhanced with geometric warping
+- ❑ Adapted for black-box / pre-trained CNN face recognition models
+- ❑ Uses Thin-Plate-Spline (TPS) deformation to augment inputs during gradient computation
 
-All results are stored in `final_check_decowa/`.
+### Basic Idea
+
+- ❑ Instead of only optimizing pixel perturbations, DECOWA also optimizes **spatial warping** of the input
+- ❑ Generates multiple deformed copies of the adversarial image per iteration
+- ❑ Averages gradients across all deformed copies to produce a more transferable perturbation
+- ❑ The warping is constrained via a deformation step (ρ) to prevent extreme distortion
+- ❑ This "input diversity via geometric deformation" avoids overfitting to the surrogate model's decision boundary
 
 ---
 
-## 🏆 Final Results
+## Slide 4 — Working of DECOWA Attack
 
-### Overall DECOWA Breach Rate
+### Algorithm Steps
+
+1. Initialize adversarial image as original input
+2. Define attack objective (based on attack type — impersonation or dodging)
+3. **For T iterations:**
+   1. Initialize gradient accumulator to zero
+   2. **For K warping samples:**
+      - Generate a random noise map for the TPS control grid
+      - Compute deformation-update step: descend the attack loss w.r.t. noise map (ρ = 0.01)
+      - Warp the adversarial image using the updated TPS noise map
+      - Compute gradient of attack loss w.r.t. the adversarial image through the warped copy
+      - Accumulate the gradient
+   3. Average gradients across all K warping samples
+   4. Normalize gradient by mean absolute value
+   5. Update momentum: g = DECAY × g + normalized\_gradient
+   6. Update image: adv = adv + α × sign(g)
+   7. Project image into ε-bounded region
+   8. Clip to valid pixel range \[-1, 1\]
+4. Return final adversarial image
+
+---
+
+## Slide 5 — DECOWA Goal
+
+- Operates in **embedding space** (cosine similarity)
+- **Impersonation:** increase cosine similarity between adversarial face and target face → make the system think two different people are the same
+- **Dodging:** decrease cosine similarity between adversarial face and its genuine pair → make the system fail to recognize the same person
+- Optimizes embedding distance directly through differentiable warping
+
+---
+
+## Slide 6 — Understanding DECOWA
+
+### DECOWA = Deformation-Constrained Warping Attack
+
+> Targets the **model overfitting problem** in transfer attacks by augmenting inputs with geometric deformations.
+
+### Thin-Plate-Spline (TPS) Warping
+
+- Defines a 3×3 control mesh over the image
+- Interior control points are displaced by a learnable noise map
+- Edge points remain fixed to prevent extreme distortion
+- Produces smooth, differentiable spatial deformations
+
+### Deformation-Constrained Update
+
+- For each warping sample, the noise map is initialized randomly
+- A single gradient descent step on the noise map finds a "hard" warp — a deformation that makes the attack objective harder
+- This forces the gradient to account for geometric variations, improving transferability
+
+### Gradient Averaging Over Warps
+
+- 20 warping samples per iteration (DECOWA\_NUM\_WARPING = 20)
+- Each sample produces a different deformed view of the adversarial image
+- Averaging gradients across all views smooths out model-specific features
+- Similar philosophy to DI-FGSM (input diversity) but using geometric deformation instead of random resizing
+
+### Momentum Update
+
+- Same as MI-FGSM: maintains accumulated gradient momentum
+- g = DECAY × g + avg\_gradient
+- adv = adv + α × sign(g)
+
+---
+
+## Slide 7 — Attack Implementation
+
+### DECOWA in Our Implementation
+
+| Parameter | Value |
+|:---|:---:|
+| ε (epsilon) | 0.062 |
+| NUM\_ITER | 5 |
+| DECAY (momentum) | 1.0 |
+| DECOWA\_MESH | 3 (3×3 TPS control grid) |
+| DECOWA\_NUM\_WARPING | 20 (warping samples per iteration) |
+| DECOWA\_NOISE\_SCALE | 2.0 (initial noise magnitude) |
+| DECOWA\_RHO | 0.01 (deformation update step size) |
+
+### Implementation Details
+
+1. Initializes momentum variable `g`
+2. For each iteration, performs **20 warping samples**:
+   - Random TPS noise map → deformation-constrained update (ρ = 0.01)
+   - Warp adversarial image via TPS grid → bilinear sampling
+   - Compute gradient through warped image
+3. Average gradients across all 20 warps
+4. Normalize by mean absolute value
+5. Momentum update: `g = DECAY * g + normalized_grad`
+6. Standard ε-projection via clipping (ε = 0.062)
+7. Full implementation → `core/transfer_attack_core.py`
+
+---
+
+## Slide 8 — Results: Overall DECOWA Performance
+
+### Overall Breach Rate
 
 | Attack Method | Num Rows | Breach Rate (%) | Impact Mean |
 |:---|:---:|:---:|:---:|
@@ -81,12 +153,16 @@ All results are stored in `final_check_decowa/`.
 
 ### Breach Rate by Attack Goal
 
-| Attack Type | Num Rows | Breach Rate (%) | Impact Mean |
-|:---|:---:|:---:|:---:|
-| Dodging Attack | 240 | **43.75%** | 0.2386 |
-| Impersonation Attack | 240 | **22.50%** | 0.1323 |
+| Attack Type | Breach Rate (%) | Impact Mean |
+|:---|:---:|:---:|
+| Dodging Attack | **43.75%** | 0.2386 |
+| Impersonation Attack | **22.50%** | 0.1323 |
 
-### Breach Rate by Victim Model (Averaged Across All Attackers)
+---
+
+## Slide 9 — Results: Per-Victim Breach Rates
+
+### Average Breach Rate by Victim Model
 
 | Victim Model | Avg Breach Rate (%) | Avg Impact Mean |
 |:---|:---:|:---:|
@@ -96,9 +172,11 @@ All results are stored in `final_check_decowa/`.
 | Facenet512 | 31.11% | 0.278 |
 | IR152 | 16.67% | 0.194 |
 
-> **Note:** IR152 shows significantly lower breach rates because it is a 152-layer PyTorch model with fundamentally different architecture from the Keras-based attacker models. This cross-framework transfer gap is well-documented in the literature and consistent with expected behavior.
+> **Note:** IR152 shows significantly lower breach rates because it is a 152-layer PyTorch model with a fundamentally different architecture from the Keras-based surrogate models. This cross-framework transfer gap is well-documented in the literature.
 
-### Full Attacker → Victim Breakdown
+---
+
+## Slide 10 — Results: Full Attacker → Victim Breakdown
 
 | Attacker | Victim | Breach Rate (%) | Impact Mean |
 |:---|:---|:---:|:---:|
@@ -112,24 +190,22 @@ All results are stored in `final_check_decowa/`.
 | **ArcFace** | GhostFaceNet | 40.00% | 0.1032 |
 | **ArcFace** | VGG-Face | 33.33% | 0.1421 |
 | **ArcFace** | Facenet512 | 30.00% | 0.2565 |
-| **GhostFaceNet** | ArcFace | 20.00% | 0.0843 |
-| **VGG-Face** | IR152 | 16.67% | 0.2247 |
-| **ArcFace** | IR152 | 10.00% | 0.1923 |
-| **GhostFaceNet** | VGG-Face | 10.00% | 0.0524 |
-| **GhostFaceNet** | Facenet512 | 3.33% | 0.1151 |
-| **GhostFaceNet** | IR152 | 0.00% | 0.0892 |
+| GhostFaceNet | ArcFace | 20.00% | 0.0843 |
+| VGG-Face | IR152 | 16.67% | 0.2247 |
+| ArcFace | IR152 | 10.00% | 0.1923 |
+| GhostFaceNet | VGG-Face | 10.00% | 0.0524 |
+| GhostFaceNet | Facenet512 | 3.33% | 0.1151 |
+| GhostFaceNet | IR152 | 0.00% | 0.0892 |
 
 ### Key Observations
 
-- **VGG-Face and Facenet512 are the strongest DECOWA attackers**, achieving 60% breach rates against each other. Their adversarial images transfer very effectively.
-- **GhostFaceNet is the weakest attacker** for DECOWA, with breach rates between 0–20%. Its internal representations do not produce adversarial perturbations that generalize well across models.
-- **IR152 is the most robust victim** across all attackers, consistent with its role as the deep, cross-framework benchmark.
+- **VGG-Face and Facenet512 are the strongest DECOWA attackers** — achieving 60% breach rates against each other
+- **GhostFaceNet is the weakest attacker** — its perturbations do not generalize well across architectures
+- **IR152 is the most robust victim** — consistent with its role as the deep, cross-framework benchmark
 
 ---
 
-## 📊 Combined Leaderboard: All Attacks
-
-After resolving all evaluation issues and running a strict, fair, apples-to-apples comparison across all 5 standard victims:
+## Slide 11 — Combined Leaderboard: All Attacks
 
 | Rank | Attack Method | Breach Rate (%) | Impact Mean |
 |:---:|:---|:---:|:---:|
@@ -143,27 +219,6 @@ After resolving all evaluation issues and running a strict, fair, apples-to-appl
 
 ### Conclusion
 
-**DECOWA achieves the highest overall breach rate of 33.13%**, outperforming all vanilla baselines and our custom BPA\_CNN implementation by a significant margin (+3.55% over BPA\_CNN, +4.80% over SI\_NI\_FGSM). This confirms DECOWA as a state-of-the-art transferable adversarial attack method for face recognition systems.
+**DECOWA achieves the highest overall breach rate of 33.13%**, outperforming all vanilla baselines and our custom BPA\_CNN implementation by a significant margin (+3.55% over BPA\_CNN, +4.80% over SI\_NI\_FGSM).
 
----
-
-## 📁 File Structure
-
-```
-transferattack/
-├── outputs_decowa_colab/              # Generated adversarial images
-│   ├── ArcFace/DECOWA/
-│   ├── Facenet512/DECOWA/
-│   ├── GhostFaceNet/DECOWA/
-│   └── VGG-Face/DECOWA/
-├── results_decowa_colab/              # Raw evaluation CSVs
-│   ├── subset_raw_similarities_long.csv    (merged, all 4 attackers)
-│   └── subset_raw_similarities_long_v.csv  (Facenet512 & VGG-Face only)
-├── final_check_decowa/                # Final summary tables
-│   ├── subset_attack_summary.csv
-│   ├── subset_attack_summary_by_goal.csv
-│   ├── subset_attacker_victim_summary.csv
-│   ├── subset_attack_eval_long.csv
-│   └── subset_input_pairs.csv
-└── README_DECOWA.md                   # This file
-```
+DECOWA's strength lies in its **geometric input diversity** — by averaging gradients across 20 different spatially-warped copies per iteration, it produces perturbations that generalize across model architectures far better than purely gradient-based methods.
